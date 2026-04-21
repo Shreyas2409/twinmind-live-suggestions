@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAudioCapture, AudioChunk } from "@/hooks/useAudioCapture";
-import { loadSettings } from "@/lib/settings";
+import { getFullSettings } from "@/lib/store";
 
 export interface TranscriptChunk {
   id: string;
@@ -27,7 +27,7 @@ export default function TranscriptPanel({
   onTranscriptUpdateRef.current = onTranscriptUpdate;
 
   const transcribeAudioChunk = useCallback(async (audioChunk: AudioChunk) => {
-    const settings = loadSettings();
+    const settings = getFullSettings();
     if (!settings.groqApiKey) {
       setTranscribeError("No API key set. Open Settings to add your Groq API key.");
       return;

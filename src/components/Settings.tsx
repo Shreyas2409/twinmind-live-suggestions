@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Settings as SettingsType, loadSettings, saveSettings, getDefaultSettings } from "@/lib/settings";
+import { useApiKeyStore, useSettingsStore } from "@/lib/store";
+import {
+  DEFAULT_SUGGESTION_PROMPT,
+  DEFAULT_DETAIL_PROMPT,
+  DEFAULT_CHAT_PROMPT,
+  DEFAULT_SUGGESTION_CONTEXT_WINDOW,
+  DEFAULT_CHAT_CONTEXT_WINDOW,
+} from "@/lib/settings";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,19 +16,52 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [settings, setSettings] = useState<SettingsType>(getDefaultSettings());
+  const apiKey = useApiKeyStore((s) => s.groqApiKey);
+  const setApiKey = useApiKeyStore((s) => s.setApiKey);
+  const suggestionPrompt = useSettingsStore((s) => s.suggestionPrompt);
+  const detailPrompt = useSettingsStore((s) => s.detailPrompt);
+  const chatPrompt = useSettingsStore((s) => s.chatPrompt);
+  const suggestionContextWindow = useSettingsStore((s) => s.suggestionContextWindow);
+  const chatContextWindow = useSettingsStore((s) => s.chatContextWindow);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+
+  const [localKey, setLocalKey] = useState("");
+  const [localSettings, setLocalSettings] = useState({
+    suggestionPrompt,
+    detailPrompt,
+    chatPrompt,
+    suggestionContextWindow,
+    chatContextWindow,
+  });
 
   useEffect(() => {
-    if (isOpen) setSettings(loadSettings());
-  }, [isOpen]);
+    if (isOpen) {
+      setLocalKey(apiKey);
+      setLocalSettings({
+        suggestionPrompt,
+        detailPrompt,
+        chatPrompt,
+        suggestionContextWindow,
+        chatContextWindow,
+      });
+    }
+  }, [isOpen, apiKey, suggestionPrompt, detailPrompt, chatPrompt, suggestionContextWindow, chatContextWindow]);
 
   const handleSave = useCallback(() => {
-    saveSettings(settings);
+    setApiKey(localKey);
+    updateSettings(localSettings);
     onClose();
-  }, [settings, onClose]);
+  }, [localKey, localSettings, setApiKey, updateSettings, onClose]);
 
   const handleReset = useCallback(() => {
-    setSettings(getDefaultSettings());
+    setLocalKey("");
+    setLocalSettings({
+      suggestionPrompt: DEFAULT_SUGGESTION_PROMPT,
+      detailPrompt: DEFAULT_DETAIL_PROMPT,
+      chatPrompt: DEFAULT_CHAT_PROMPT,
+      suggestionContextWindow: DEFAULT_SUGGESTION_CONTEXT_WINDOW,
+      chatContextWindow: DEFAULT_CHAT_CONTEXT_WINDOW,
+    });
   }, []);
 
   if (!isOpen) return null;
@@ -44,11 +84,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <label className="mb-1.5 block text-sm font-medium text-zinc-300">Groq API Key</label>
             <input
               type="password"
-              value={settings.groqApiKey}
-              onChange={(e) => setSettings({ ...settings, groqApiKey: e.target.value })}
-              placeholder="gsk_..."
+              value={localKey}
+              onChange={(e) => setLocalKey(e.target.value)}
+              placeholder="Enter your Groq API key (gsk_...)"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
+            <p className="mt-1.5 text-xs text-zinc-500">Held in memory only — not saved to disk. Re-enter on page reload.</p>
           </div>
 
           {/* Context Windows */}
@@ -57,8 +98,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <label className="mb-1.5 block text-sm font-medium text-zinc-300">Suggestion Context Window (chars)</label>
               <input
                 type="number"
-                value={settings.suggestionContextWindow}
-                onChange={(e) => setSettings({ ...settings, suggestionContextWindow: parseInt(e.target.value) || 0 })}
+                value={localSettings.suggestionContextWindow}
+                onChange={(e) => setLocalSettings({ ...localSettings, suggestionContextWindow: parseInt(e.target.value) || 0 })}
                 className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -66,8 +107,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <label className="mb-1.5 block text-sm font-medium text-zinc-300">Chat Context Window (chars)</label>
               <input
                 type="number"
-                value={settings.chatContextWindow}
-                onChange={(e) => setSettings({ ...settings, chatContextWindow: parseInt(e.target.value) || 0 })}
+                value={localSettings.chatContextWindow}
+                onChange={(e) => setLocalSettings({ ...localSettings, chatContextWindow: parseInt(e.target.value) || 0 })}
                 className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -77,8 +118,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-zinc-300">Suggestion Prompt</label>
             <textarea
-              value={settings.suggestionPrompt}
-              onChange={(e) => setSettings({ ...settings, suggestionPrompt: e.target.value })}
+              value={localSettings.suggestionPrompt}
+              onChange={(e) => setLocalSettings({ ...localSettings, suggestionPrompt: e.target.value })}
               rows={4}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
             />
@@ -88,8 +129,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-zinc-300">Detail Answer Prompt</label>
             <textarea
-              value={settings.detailPrompt}
-              onChange={(e) => setSettings({ ...settings, detailPrompt: e.target.value })}
+              value={localSettings.detailPrompt}
+              onChange={(e) => setLocalSettings({ ...localSettings, detailPrompt: e.target.value })}
               rows={3}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
             />
@@ -99,8 +140,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-zinc-300">Chat Prompt</label>
             <textarea
-              value={settings.chatPrompt}
-              onChange={(e) => setSettings({ ...settings, chatPrompt: e.target.value })}
+              value={localSettings.chatPrompt}
+              onChange={(e) => setLocalSettings({ ...localSettings, chatPrompt: e.target.value })}
               rows={3}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
             />

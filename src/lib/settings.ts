@@ -99,37 +99,3 @@ RULES:
 
 export const DEFAULT_SUGGESTION_CONTEXT_WINDOW = 8000;
 export const DEFAULT_CHAT_CONTEXT_WINDOW = 16000;
-
-const STORAGE_KEY = "twinmind-settings";
-
-export function getDefaultSettings(): Settings {
-  return {
-    groqApiKey: "",
-    suggestionPrompt: DEFAULT_SUGGESTION_PROMPT,
-    detailPrompt: DEFAULT_DETAIL_PROMPT,
-    chatPrompt: DEFAULT_CHAT_PROMPT,
-    suggestionContextWindow: DEFAULT_SUGGESTION_CONTEXT_WINDOW,
-    chatContextWindow: DEFAULT_CHAT_CONTEXT_WINDOW,
-  };
-}
-
-export function loadSettings(): Settings {
-  if (typeof window === "undefined") return getDefaultSettings();
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return getDefaultSettings();
-    const parsed = JSON.parse(stored) as Partial<Settings>;
-    return { ...getDefaultSettings(), ...parsed };
-  } catch {
-    return getDefaultSettings();
-  }
-}
-
-export function saveSettings(settings: Settings): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    console.error("Failed to save settings to localStorage");
-  }
-}

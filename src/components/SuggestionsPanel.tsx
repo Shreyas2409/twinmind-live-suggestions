@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { TranscriptChunk } from "@/components/TranscriptPanel";
-import { loadSettings } from "@/lib/settings";
+import { getFullSettings } from "@/lib/store";
 
 export interface Suggestion {
   type: "question" | "talking_point" | "fact_check" | "clarification" | "answer" | "action_item";
@@ -47,7 +47,7 @@ export default function SuggestionsPanel({ chunks, onSuggestionClick, onBatchesU
   batchesRef.current = batches;
 
   const fetchSuggestions = useCallback(async () => {
-    const settings = loadSettings();
+    const settings = getFullSettings();
     if (!settings.groqApiKey) {
       setError("No API key set. Open Settings to configure.");
       return;
@@ -116,6 +116,9 @@ export default function SuggestionsPanel({ chunks, onSuggestionClick, onBatchesU
     }
   }, [chunks]);
 
+  const fetchSuggestionsRef = useRef(fetchSuggestions);
+  fetchSuggestionsRef.current = fetchSuggestions;
+
   // Notify parent when batches change (outside render phase)
   useEffect(() => {
     onBatchesUpdateRef.current?.(batches);
@@ -125,9 +128,9 @@ export default function SuggestionsPanel({ chunks, onSuggestionClick, onBatchesU
   useEffect(() => {
     if (chunks.length > lastChunkCountRef.current && chunks.length > 0) {
       lastChunkCountRef.current = chunks.length;
-      fetchSuggestions();
+      fetchSuggestionsRef.current();
     }
-  }, [chunks, fetchSuggestions]);
+  }, [chunks]);
 
   // Auto-refresh timer when recording
   useEffect(() => {
@@ -139,14 +142,14 @@ export default function SuggestionsPanel({ chunks, onSuggestionClick, onBatchesU
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          fetchSuggestions();
+          fetchSuggestionsRef.current();
           return AUTO_REFRESH_SECONDS;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [isRecording, chunks.length, fetchSuggestions]);
+  }, [isRecording, chunks.length]);
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);
@@ -172,7 +175,7 @@ export default function SuggestionsPanel({ chunks, onSuggestionClick, onBatchesU
             {batches.length} {batches.length === 1 ? "BATCH" : "BATCHES"}
           </span>
           <button
-            onClick={() => { fetchSuggestions(); setCountdown(AUTO_REFRESH_SECONDS); }}
+            onClick={() => { fetchSuggestionsRef.current(); setCountdown(AUTO_REFRESH_SECONDS); }}
             disabled={isLoading || chunks.length === 0}
             className="px-3 py-1.5 text-sm rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >

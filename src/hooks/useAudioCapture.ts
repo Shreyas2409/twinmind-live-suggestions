@@ -23,7 +23,7 @@ interface UseAudioCaptureReturn {
 export function useAudioCapture(
   options: UseAudioCaptureOptions = {}
 ): UseAudioCaptureReturn {
-  const { chunkIntervalMs = 30000, onChunkReady } = options;
+  const { chunkIntervalMs = 15000, onChunkReady } = options;
 
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,84 +33,61 @@ export function useAudioCapture(
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onChunkReadyRef = useRef(onChunkReady);
+  const isStoppingRef = useRef(false);
   onChunkReadyRef.current = onChunkReady;
 
-  const collectChunk = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state !== "recording") return;
+  const createRecorder = useCallback((stream: MediaStream): MediaRecorder => {
+    const mimeType = getSupportedMimeType();
+    const recorder = new MediaRecorder(stream, { mimeType });
 
-    // Stop and restart to flush data
-    recorder.stop();
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data);
+      }
+    };
 
-    // Small delay to let ondataavailable fire, then restart
-    setTimeout(() => {
-      if (recorder.stream.active && streamRef.current) {
-        try {
-          const newRecorder = new MediaRecorder(streamRef.current, {
-            mimeType: getSupportedMimeType(),
-          });
-          newRecorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-              chunksRef.current.push(e.data);
-            }
-          };
-          newRecorder.onstop = () => {
-            if (chunksRef.current.length > 0) {
-              const blob = new Blob(chunksRef.current, {
-                type: getSupportedMimeType(),
-              });
-              chunksRef.current = [];
-              if (blob.size > 0) {
-                onChunkReadyRef.current?.({
-                  blob,
-                  timestamp: Date.now(),
-                });
-              }
-            }
-          };
-          mediaRecorderRef.current = newRecorder;
-          newRecorder.start();
-        } catch {
-          // Stream may have ended
+    recorder.onstop = () => {
+      if (chunksRef.current.length > 0) {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        chunksRef.current = [];
+        if (blob.size > 0) {
+          onChunkReadyRef.current?.({ blob, timestamp: Date.now() });
         }
       }
-    }, 100);
+
+      if (!isStoppingRef.current && streamRef.current && streamRef.current.active) {
+        try {
+          const newRecorder = createRecorder(streamRef.current);
+          mediaRecorderRef.current = newRecorder;
+          newRecorder.start();
+        } catch (err) {
+          console.error("Failed to restart recorder:", err);
+        }
+      }
+    };
+
+    return recorder;
   }, []);
 
   const startRecording = useCallback(async () => {
     setError(null);
+    isStoppingRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-
-      const mimeType = getSupportedMimeType();
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        if (chunksRef.current.length > 0) {
-          const blob = new Blob(chunksRef.current, { type: mimeType });
-          chunksRef.current = [];
-          if (blob.size > 0) {
-            onChunkReadyRef.current?.({
-              blob,
-              timestamp: Date.now(),
-            });
-          }
-        }
-      };
-
+      const recorder = createRecorder(stream);
+      mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
 
-      intervalRef.current = setInterval(collectChunk, chunkIntervalMs);
+      intervalRef.current = setInterval(() => {
+        const rec = mediaRecorderRef.current;
+        if (rec && rec.state === "recording") {
+          rec.stop();
+        }
+      }, chunkIntervalMs);
     } catch (err) {
       if (err instanceof DOMException) {
         if (err.name === "NotAllowedError") {
@@ -124,9 +101,10 @@ export function useAudioCapture(
         setError("Failed to start recording.");
       }
     }
-  }, [chunkIntervalMs, collectChunk]);
+  }, [chunkIntervalMs, createRecorder]);
 
   const stopRecording = useCallback(() => {
+    isStoppingRef.current = true;
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -141,8 +119,11 @@ export function useAudioCapture(
   }, []);
 
   const flushCurrentChunk = useCallback(() => {
-    collectChunk();
-  }, [collectChunk]);
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === "recording") {
+      rec.stop();
+    }
+  }, []);
 
   return {
     isRecording,

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { TranscriptChunk } from "@/components/TranscriptPanel";
-import { loadSettings } from "@/lib/settings";
+import { getFullSettings } from "@/lib/store";
 import {
   ChatMessage,
   buildSuggestionContext,
@@ -50,6 +50,10 @@ export default function ChatPanel({
     }
   }, [messages, isStreaming]);
 
+  const sendToApiRef = useRef<
+    (userMsg: ChatMessage, isSuggestion: boolean) => Promise<void>
+  >(() => Promise.resolve());
+
   // Handle suggestion clicks from middle panel
   useEffect(() => {
     if (
@@ -65,13 +69,13 @@ export default function ChatPanel({
         suggestionType: selectedSuggestion.type,
       };
       setMessages((prev) => [...prev, userMsg]);
-      sendToApi(userMsg, true);
+      sendToApiRef.current(userMsg, true);
     }
-  }, [selectedSuggestion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedSuggestion]);
 
   const sendToApi = useCallback(
     async (userMsg: ChatMessage, isSuggestion: boolean) => {
-      const settings = loadSettings();
+      const settings = getFullSettings();
       if (!settings.groqApiKey) return;
 
       const transcript = buildSuggestionContext(
@@ -201,6 +205,8 @@ export default function ChatPanel({
     [transcriptChunks, messages]
   );
 
+  sendToApiRef.current = sendToApi;
+
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text || isStreaming) return;
@@ -213,8 +219,8 @@ export default function ChatPanel({
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    sendToApi(userMsg, false);
-  }, [input, isStreaming, sendToApi]);
+    sendToApiRef.current(userMsg, false);
+  }, [input, isStreaming]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

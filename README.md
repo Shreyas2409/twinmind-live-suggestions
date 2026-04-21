@@ -2,7 +2,8 @@
 
 A real-time AI meeting copilot that listens to live audio, transcribes it, and surfaces contextual suggestions — all powered by Groq's inference engine.
 
-**Live Demo**: [deployed-url]**Stack**: Next.js 16 · TypeScript · Tailwind CSS v4 · Groq APIs
+**Live Demo**: [deployed-url]
+**Stack**: Next.js 16 · TypeScript · Tailwind CSS v4 · Zustand · Groq APIs
 
 ## Quick Start
 
@@ -59,10 +60,16 @@ If the answer is no, it doesn't belong on screen.
 │  Panel      │  Panel           │  Panel                         │
 │             │                  │                                │
 │  MediaRec.  │  3 cards/batch   │  Streaming SSE                 │
-│  30s chunks │  newest on top   │  Markdown render               │
-└──────┬──────┴────────┬─────────┴───────────┬───────────────────┘
-       │               │                     │
-       ▼               ▼                     ▼
+│  15s chunks │  newest on top   │  Markdown render               │
+├─────────────┴──────────────────┴────────────────────────────────┤
+│                    Zustand State Layer                           │
+│  ┌──────────────────┐  ┌──────────────────────────────────┐     │
+│  │ useApiKeyStore   │  │ useSettingsStore (persist)        │     │
+│  │ memory only      │  │ localStorage: prompts, prefs     │     │
+│  └──────────────────┘  └──────────────────────────────────┘     │
+└──────┬──────────────────────┬──────────────────┬────────────────┘
+       │                      │                  │
+       ▼                      ▼                  ▼
 ┌──────────────┐ ┌───────────────┐ ┌─────────────────┐
 │/api/transcribe│ │/api/suggestions│ │  /api/chat       │
 │              │ │               │ │                 │
@@ -79,7 +86,7 @@ If the answer is no, it doesn't belong on screen.
 
 ### Data Flow
 
-1. **Audio Capture** → Browser MediaRecorder captures mic in webm/opus → every 30s, chunk is flushed
+1. **Audio Capture** → Browser MediaRecorder captures mic in webm/opus → every 15s, chunk is flushed
 2. **Transcription** → Audio blob → `/api/transcribe` → Groq Whisper Large V3 → text chunk with timestamp
 3. **Suggestions** → Transcript (windowed to last 8K chars) + previous batch titles → `/api/suggestions` → GPT-OSS 120B → 3 JSON suggestion cards
 4. **Chat** → Clicked suggestion or typed question + transcript context (16K chars) + chat history → `/api/chat` → GPT-OSS 120B (streaming SSE) → rendered response
@@ -106,7 +113,8 @@ TwinMind/
 │   ├── hooks/
 │   │   └── useAudioCapture.ts       # MediaRecorder hook, 30s chunking, flush
 │   └── lib/
-│       ├── settings.ts              # Defaults, types, localStorage helpers
+│       ├── settings.ts              # Default prompts, types, constants
+│       ├── store.ts                 # Zustand stores (API key in memory, settings persisted)
 │       ├── groq.ts                  # Groq API client (shared)
 │       ├── prompts.ts               # Context windowing, message builders
 │       └── export.ts                # Session export logic
@@ -230,11 +238,11 @@ Even with strong prompts, the model sometimes returns 3 suggestions of the same 
 
 | Decision | Why | Tradeoff |
 | --- | --- | --- |
-| Next.js API routes as proxy | API key stays on the client (localStorage) but is sent via headers to server routes that proxy to Groq. No server-side secrets needed. | Extra hop, but avoids CORS and keeps keys out of browser network tab for Groq calls |
-| 30s chunk interval | Matches natural speech patterns (~100 words). Shorter = more API calls + fragmented context. Longer = stale suggestions. | 30s felt right in testing; configurable via code |
+| Next.js API routes as proxy | API key held in React state (memory only) — never persisted to localStorage. User re-enters on page reload. Sent via headers to server-side API routes that proxy to Groq. | Extra hop, but avoids CORS and keeps keys out of browser network tab for Groq calls |
+| 15s chunk interval | Balances responsiveness with API efficiency. Users get transcript updates every 15s instead of waiting 30s. | More API calls, but perceived latency is much lower |
 | webm/opus audio format | Native MediaRecorder format in Chrome/Edge. No transcoding needed. Groq accepts it directly. | Firefox falls back to ogg/opus; Safari may need mp4 |
-| No external dependencies | Zero runtime deps beyond Next.js + React. No state management library, no UI component library. | More custom code, but smaller bundle and no version conflicts |
-| localStorage for settings | Simplest persistence. No backend needed. Settings survive page reloads. | Lost on browser clear; no cross-device sync |
+| Zustand for state management | Lightweight (1.1kB) store separates API key (memory-only) from settings (localStorage). Survives hot reloads during development. | Adds one dependency, but eliminates stale closure bugs and module-variable hacks |
+| Dual Zustand stores | `useSettingsStore` persists prompts/preferences via Zustand's `persist` middleware. `useApiKeyStore` holds the API key in memory only — never written to localStorage. | User re-enters API key on reload; acceptable tradeoff for a session-based tool |
 | Streaming SSE for chat | Tokens appear as they arrive. Perceived latency drops from ~3s to ~200ms for first token. | More complex client-side parsing |
 | Temperature 0.6 for suggestions, 0.5 for chat | Suggestions need some creativity for variety. Chat needs precision and conciseness. | Could be tuned per use case |
 | 400 max_tokens for chat | Physically enforces brevity. The model was ignoring "under 200 words" at higher limits. | May truncate complex answers |
