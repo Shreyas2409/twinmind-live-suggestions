@@ -2,7 +2,7 @@
 
 A real-time AI meeting copilot that listens to live audio, transcribes it, and surfaces contextual suggestions — all powered by Groq's inference engine.
 
-**Live Demo**: [deployed-url]
+**Live Demo**: https://darling-marigold-0c9088.netlify.app/
 **Stack**: Next.js 16 · TypeScript · Tailwind CSS v4 · Zustand · Groq APIs
 
 ## Quick Start
